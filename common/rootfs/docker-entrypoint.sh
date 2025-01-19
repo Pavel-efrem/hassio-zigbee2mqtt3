@@ -51,7 +51,9 @@ if ! bashio::fs.file_exists "$ZIGBEE2MQTT_DATA/configuration.yaml"; then
     mkdir -p "$ZIGBEE2MQTT_DATA" || bashio::exit.nok "Could not create $ZIGBEE2MQTT_DATA"
 
     cat <<EOF > "$ZIGBEE2MQTT_DATA/configuration.yaml"
-homeassistant: true
+version: 4
+homeassistant:
+  enabled: true
 advanced:
   network_key: GENERATE
   pan_id: GENERATE
@@ -59,13 +61,18 @@ advanced:
 EOF
 fi
 
-if bashio::config.true 'zigbee_herdsman_debug'; then
-    bashio::log.info "Zigbee Herdsman debug logging enabled"
-    export DEBUG="zigbee-herdsman:*"
-    export NODE_OPTIONS=--trace-warnings
+if bashio::config.has_value 'watchdog'; then
+    export Z2M_WATCHDOG="$(bashio::config 'watchdog')"
+    bashio::log.info "Enabled Zigbee2MQTT watchdog with value '$Z2M_WATCHDOG'"
 fi
+
 export NODE_PATH=/app/node_modules
-export ZIGBEE2MQTT_CONFIG_FRONTEND='{"port": 8099}'
+export ZIGBEE2MQTT_CONFIG_FRONTEND='{"enabled":true,"port": 8099}'
+
+if bashio::config.true 'disable_tuya_default_response'; then
+    bashio::log.info "Disabling TuYa default responses"
+    export DISABLE_TUYA_DEFAULT_RESPONSE="true"
+fi
 
 # Expose addon configuration through environment variables.
 function export_config() {
@@ -84,7 +91,7 @@ function export_config() {
 export_config 'mqtt'
 export_config 'serial'
 
-if bashio::config.is_empty 'mqtt' && bashio::var.has_value "$(bashio::services 'mqtt')"; then
+if (bashio::config.is_empty 'mqtt' || ! (bashio::config.has_value 'mqtt.server' || bashio::config.has_value 'mqtt.user' || bashio::config.has_value 'mqtt.password')) && bashio::var.has_value "$(bashio::services 'mqtt')"; then
     if bashio::var.true "$(bashio::services 'mqtt' 'ssl')"; then
         export ZIGBEE2MQTT_CONFIG_MQTT_SERVER="mqtts://$(bashio::services 'mqtt' 'host'):$(bashio::services 'mqtt' 'port')"
     else
